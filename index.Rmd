@@ -1,0 +1,80 @@
+---
+title: "Machine learning assignment"
+author: "Eduardo Suja"
+date: "12 de marzo de 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Getting data
+
+```{r get_data}
+filetrainingUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(filetrainingUrl,destfile = "training.csv")
+training <- read.csv("training.csv", header = TRUE)
+
+validationUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(validationUrl,destfile = "validation.csv")
+validation <- read.csv("validation.csv", header = TRUE)
+```
+
+## Creating a partition
+By creating a training set (called subtraining) and a testing set from the original training set, we will perform cross validation without replacement.
+
+```{r partition}
+library(caret)
+set.seed(1789)
+inTrain <- createDataPartition(training$classe, p=0.75, list = FALSE)
+subtraining <- training[inTrain,]
+testing <- training[-inTrain,]
+dim(subtraining)
+```
+
+## Cleaning data
+
+```{r cleaning_data}
+# The first 7 variables don't seem to be related to the outcome, so we'll work whithout them
+subtraining <- subtraining[,-c(1:7)]
+dim(subtraining)
+# 153 variables are two much. Let's remove near zero variance variables.
+near_zero_variables  <- nearZeroVar(subtraining)
+subtraining <- subtraining[,-near_zero_variables]
+dim(subtraining)
+# Out of these 95 variables, some contain lots of NA. Let's get rid of them.
+mainly_na_var <- sapply(subtraining, function(x) mean(is.na(x)) > 0.8)
+subtraining <- subtraining[,mainly_na_var == FALSE]
+dim(subtraining)
+
+```
+
+
+## Fitting a model
+
+The outcome beeing an unordered factor variable, random forests, k-means and decision trees seem to bee appropriate to fit a predicting model.
+Let's start with random forest.
+
+### Random forest
+
+```{r fit_model_rf}
+set.seed(2001)
+# Fitting a random forest to the testing set. 
+control_rf <- trainControl(method = "cv", number = 3, verboseIter = FALSE)
+fit_rf <- train(classe ~ ., data = subtraining, method="rf", trControl = control_rf)
+predict_rf <- predict(fit_rf, newdata = testing)
+confmat_rf <- confusionMatrix(predict_rf, testing$classe)
+confmat_rf$overall[1]
+```
+
+The expected out of sample error will be the complementary value of the accuracy applied to the size of the validation test.
+With an accuracy of 0.9935, we can expect that applying the model over a 20 samples will give us 19.87 correct estimations. That is, the 20 values out of 20 will be correct, and 0 will be an error.
+With those expectations, there is no point in keeping trying with other algorithms, and we consider the model random forest to be accurated enough for this data set.
+
+## Applying the model to the validation set
+
+```{r validation_set}
+predict_validation <- predict(fit_rf,validation)
+predict_validation
+```
